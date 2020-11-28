@@ -1,7 +1,7 @@
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-public class Server implements Runnable
+public class Server
 {
     private ServerSocket serverSocket = null;
     private Socket socket = null;
@@ -11,110 +11,108 @@ public class Server implements Runnable
     private DataInputStream inFromClient = null;
     private ObjectOutputStream boardToClient = null;
     private ObjectInputStream boardFromClient = null;
+    private ObjectInputStream coordinatesFromClient = null;
+    private ObjectOutputStream coordinatesToClient = null;
     private boolean gameOver = false;
+    public boolean isServerRunning = false;
 
     public static void main(String[] args) throws Exception
     {
-        Server server = new Server(5000);
+        new Server(5000);
     }
 
     public Server(int port) throws Exception
     {
+        isServerRunning = true;
         boolean isPlayer1 = true;
         serverSocket = new ServerSocket(port);
-        Thread gameThread = new Thread(this::run);
         //Waiting for connections and assigning them to appropriate socket variables
-        while(true)
-        {
+        while (true) {
             socket = serverSocket.accept();
-            if(isPlayer1 && socket != null)
-            {
+            if (isPlayer1 && socket != null) {
+                System.out.println("Player 1 connected");
                 p1Socket = socket;
                 socket = null;
                 isPlayer1 = false;
-                gameThread.start();
-            }
-            else if(!isPlayer1 && socket != null)
-            {
+            } else if (!isPlayer1 && socket != null) {
                 p2Socket = socket;
+                System.out.println("Player 2 connected");
                 break;
             }
         }
-    }
-    public void run()
-    {
-        try
-        {
-            Message message1 = new Message();
-            message1.Ftable = new BattleShipTable();
-            message1.Ptable = new BattleShipTable();
-            Message message2 = new Message();
-            message2.Ftable = new BattleShipTable();
-            message2.Ptable = new BattleShipTable();
-            int MSG;
 
-            //Performing initial round for player 1
-            sendMessage(message1.MSG_REQUEST_INIT, p1Socket);
-            MSG = receiveMessage(p1Socket);
-            if(MSG == message1.MSG_RESPONSE_INIT)
-            {
-                message1.Ftable = receiveBoard(p1Socket);
-                message2.Ptable = message1.Ftable;
-            }
-            while(true)//Waiting until player 2 connection then performing initial round
-            {
-                if(p2Socket != null)
+            Message message1 = new Message();
+            message1.p1Coordinates = new int[2];
+            message1.p2Coordinates = new int[2];
+            int MSG1;
+            int MSG2;
+            boolean p1BoardReceived = false;
+            boolean p2BoardReceived = false;
+            //Waiting until player 2 connection then performing initial round
+                //Performing initial round for player 1
+                sendMessage(message1.MSG_REQUEST_INIT, p1Socket);
+                sendMessage(message1.MSG_REQUEST_INIT, p2Socket);
+                MSG1 = receiveMessage(p1Socket);
+                MSG2 = receiveMessage(p2Socket);
+                while(!p1BoardReceived || !p2BoardReceived)
                 {
-                    sendMessage(message2.MSG_REQUEST_INIT, p2Socket);
-                    MSG = receiveMessage(p2Socket);
-                    if(MSG == message2.MSG_RESPONSE_INIT)
+                    if (MSG1 == message1.MSG_RESPONSE_INIT)
                     {
-                        message2.Ftable = receiveBoard(p2Socket);
-                        message1.Ptable = message2.Ftable;
+                        message1.p1Board = receiveBoard(p1Socket);
+                        p1BoardReceived = true;
                     }
-                    break;
+                    if(MSG2 == message1.MSG_RESPONSE_INIT)
+                    {
+                        message1.p2Board = receiveBoard(p2Socket);
+                        p2BoardReceived = true;
+                    }
+                }
+
+                //Sending 2 p-tables to both players
+                sendBoard(message1.p2Board, p1Socket);
+                sendBoard(message1.p1Board, p2Socket);
+                //Game Rounds loop until game over
+                boolean isFirstTurnDone = false;
+                sendMessage(message1.MSG_REQUEST_PLAY_FIRST, p1Socket);
+                while(!isFirstTurnDone)
+                {
+                    if(receiveMessage(p1Socket) == message1.MSG_RESPONSE_PLAY)
+                    {
+                        message1.p1Coordinates = receiveCoordinates(p1Socket);
+                        isFirstTurnDone = true;
+                    }
+                }
+                while (!gameOver)
+                {
+                    sendMessage(message1.MSG_REQUEST_PLAY, p2Socket);
+                    sendCoordinates(message1.p1Coordinates, p2Socket);
+                    System.out.println("Test");
+                    MSG1 = receiveMessage(p2Socket);
+                    if (MSG1 == message1.MSG_RESPONSE_PLAY)
+                    {
+                        message1.p2Coordinates = receiveCoordinates(p2Socket);
+                    }
+                    else if (MSG1 == message1.MSG_REQUEST_GAME_OVER)
+                    {
+                        sendMessage(message1.MSG_REQUEST_GAME_OVER, p1Socket);
+                        sendCoordinates(message1.p2Coordinates, p1Socket);
+                        gameOver = true;
+                    }
+                    sendMessage(message1.MSG_REQUEST_PLAY, p1Socket);
+                    sendCoordinates(message1.p2Coordinates, p1Socket);
+                    MSG1 = receiveMessage(p1Socket);
+                    if (MSG1 == message1.MSG_RESPONSE_PLAY)
+                    {
+                        message1.p1Coordinates = receiveCoordinates(p1Socket);
+                    }
+                    else if (MSG1 == message1.MSG_REQUEST_GAME_OVER)
+                    {
+                        sendMessage(message1.MSG_REQUEST_GAME_OVER, p2Socket);
+                        sendCoordinates(message1.p1Coordinates, p2Socket);
+                        gameOver = true;
+                    }
                 }
             }
-            //Sending 2 p-tables to both players
-            sendBoard(message1.Ptable, p1Socket);
-            sendBoard(message1.Ptable, p1Socket);
-            sendBoard(message2.Ptable, p2Socket);
-            sendBoard(message2.Ptable, p2Socket);
-            //Game Rounds loop until game over
-            while(!gameOver)
-            {
-                sendMessage(message1.MSG_REQUEST_PLAY, p1Socket);
-                sendBoard(message1.Ftable, p1Socket);
-                MSG = receiveMessage(p1Socket);
-                if(MSG == message1.MSG_RESPONSE_PLAY)
-                {
-                    message1.Ptable = receiveBoard(p1Socket);
-                    message2.Ftable = message1.Ptable;
-                }
-                else if(MSG == message1.MSG_REQUEST_GAME_OVER)
-                {
-                    sendMessage(message2.MSG_REQUEST_GAME_OVER, p2Socket);
-                    gameOver = true;
-                }
-                sendMessage(message2.MSG_REQUEST_PLAY ,p2Socket);
-                sendBoard(message2.Ftable, p2Socket);
-                MSG = receiveMessage(p2Socket);
-                if(MSG == message2.MSG_RESPONSE_PLAY)
-                {
-                    message2.Ptable = receiveBoard(p2Socket);
-                    message1.Ftable = message2.Ptable;
-                }
-                else if(MSG == message2.MSG_REQUEST_GAME_OVER)
-                {
-                    sendMessage(message2.MSG_REQUEST_GAME_OVER, p1Socket);
-                    gameOver = true;
-                }
-            }
-        }catch (Exception ex)
-        {
-            System.out.println(ex.getMessage());
-        }
-    }
     //Methods for sending and receiving messages and boards
     public void sendMessage(int msgType, Socket pSocket) throws Exception
     {
@@ -135,5 +133,15 @@ public class Server implements Runnable
     {
         boardFromClient = new ObjectInputStream(pSocket.getInputStream());
         return (BattleShipTable) boardFromClient.readObject();
+    }
+    public void sendCoordinates(int[] coordinates, Socket pSocket) throws Exception
+    {
+        coordinatesToClient = new ObjectOutputStream(pSocket.getOutputStream());
+        coordinatesToClient.writeObject(coordinates);
+    }
+    public int[] receiveCoordinates(Socket pSocket) throws Exception
+    {
+        coordinatesFromClient = new ObjectInputStream(pSocket.getInputStream());
+        return (int[]) coordinatesFromClient.readObject();
     }
 }

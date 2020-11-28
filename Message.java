@@ -9,14 +9,15 @@ public class Message implements Serializable
     static final int MSG_REQUEST_PLAY = 3; //sent from server to client
     static final int MSG_RESPONSE_PLAY = 4;//sent from client to server
     static final int MSG_REQUEST_GAME_OVER = 5; //sent from server to client
+    static final int MSG_REQUEST_PLAY_FIRST = 6;
+    static final int MSG_RESPONSE_PLAY_FIRST = 7;
 
     private int msgType=-1;
     private String msg = null;
-    private int [] blockBomb = new int[2]; //x, y coordinates of the block on the opponent's board ot be bombed; this is for the MSG_RESPONSE_PLAY message
-
-
-    public BattleShipTable Ftable = null;//the player's own board (F-board)
-    public BattleShipTable Ptable = null;//the player hits and misses on the opponent board (P-board)
+    public int[] p1Coordinates = new int[2]; //x, y coordinates of the block on the opponent's board ot be bombed; this is for the MSG_RESPONSE_PLAY message
+    public int[] p2Coordinates = new int[2];
+    public BattleShipTable p1Board = new BattleShipTable();
+    public BattleShipTable p2Board = new BattleShipTable();
 
     //getters
     public String getMsg(){
@@ -40,5 +41,4 @@ public class Message implements Serializable
     {
 
     }
-
 }
